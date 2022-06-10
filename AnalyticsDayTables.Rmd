@@ -1,0 +1,87 @@
+---
+title: "Untitled"
+author: "Courtney Haas"
+date: "11/3/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(knitr)
+d1 <- read_csv("/Users/Courtney/Documents/Programming in R/Diabetes/d1.csv")
+d11 <- d1[ -c(7) ]
+
+```
+
+```{r table}
+## Creating Table 1 ##
+table <- d11[1:5,]
+
+knitr::kable(table,
+             caption="First Five Rows of Diabetes Dataset",
+             align = "c",
+             col.names = c("Pregnancies", "Glucose (mg/dL)", 
+             "BloodPressure (mmHG)", "SkinThickness (mm)", 
+             "Insulin (muU/ml)","BMI (kg/m^2)", "Age",
+             "Outcome")) 
+
+```
+
+```{r table 2}
+## Creating confusion matrix Table 2 ##
+
+sstable <- read_csv("/Users/Courtney/Documents/Programming in R/Diabetes/sstable.csv")
+
+knitr::kable(sstable,
+             caption="Confusion Matrix",
+             align = "c" ) 
+
+```
+
+
+
+
+
+```{r table3}
+## Creating Table 3 ##
+
+lmodel <- glm(Outcome ~ SkinThickness + Pregnancies + Glucose + BMI + Age + BloodPressure, data = d1, family = "binomial")
+
+table1 <- lmodel %>% 
+  broom::tidy(conf.int=T,exponentiate=T)
+
+table1 %>% 
+  select("term","estimate","std.error","p.value","conf.low", "conf.high")
+
+table2 <- table1[-1,-4]
+
+## creating table with VIF values to each coefficient
+v <- tribble(
+  ~term, ~VIF,
+  "SkinThickness", 1.355471, 
+  "Pregnancies", 1.407123,
+  "Glucose", 1.052859,
+  "BMI", 1.471367,
+  "Age", 1.523603,
+  "BloodPressure", 1.204516
+)
+## Merging V and table3
+t3 <-merge(x=table2,y=v,by="term",all.x=TRUE)
+t4 <- t3[c(5,3,4,1,2,6),]
+
+row.names(t4) <- NULL
+
+knitr::kable(t4,caption="Final Model Variables with P-Value and VIF",
+             align = "c", digits=3,
+             col.names = c("Term","Estimate","StdError", "P-Value","Conf Low",
+             "Conf High", "VIF"))
+
+```
+
+
+
+
+

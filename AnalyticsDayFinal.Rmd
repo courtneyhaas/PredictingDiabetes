@@ -1,0 +1,267 @@
+---
+title: "FinalProject"
+author: "Courtney Haas"
+date: "11/10/2021"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+diabetes <- read.csv("/Users/Courtney/Documents/Programming in R/Diabetes/diabetes.csv")
+library(tidyverse)
+
+```
+
+```{r Initial Look}
+## Looking at dataset ##
+head(diabetes)
+summary(diabetes)
+str(diabetes)
+
+## Notice many variables have missing values labeled as 0 ##
+colSums(diabetes == 0)
+hist(diabetes$BloodPressure)
+  ## For some of the variables 0 is not a valid entry, so it is a missing value
+    ## for example, a BMI of 0 is not possible
+
+```
+
+```{r Imputation}
+## Changing 0's to NA ##
+diabetes[, 2:6][diabetes[, 2:6] == 0] <- NA
+
+## Imputing to the median ##
+diabetes$SkinThickness[is.na(diabetes$SkinThickness)]<-median(diabetes$SkinThickness,na.rm=TRUE)
+diabetes$BloodPressure[is.na(diabetes$BloodPressure)]<-median(diabetes$BloodPressure,na.rm=TRUE)
+diabetes$BMI[is.na(diabetes$BMI)]<-median(diabetes$BMI,na.rm=TRUE)
+diabetes$Insulin[is.na(diabetes$Insulin)]<-median(diabetes$Insulin,na.rm=TRUE)
+diabetes$Glucose[is.na(diabetes$Glucose)]<-median(diabetes$Glucose,na.rm=TRUE)
+
+## Saving new dataset d1 ##
+d1 <- diabetes
+write.csv(diabetes, "d1.csv",row.names = F)
+
+```
+
+```{r imputation graphics, Figure 1}
+## Histogram before imputation ##
+ggplot(diabetes) +
+  geom_histogram(mapping=aes(x=BloodPressure),fill="lightskyblue2")+
+  theme_light()+
+  labs(title = "Histogram for Blood Pressure Before Imputation to Median",
+       x = "Blood Pressure (mmHG)",
+       y= "Count") +
+  theme(plot.title=element_text(hjust=0.50))
+
+## Histogram after imputation ##
+ggplot(d1) +
+  geom_histogram(mapping=aes(x=BloodPressure),fill="lightskyblue2") +
+  theme_light() +
+labs(title = "Histogram for Blood Pressure After Imputation to Median",
+     x = "Blood Pressure (mmHG)",
+     y= "Count")+
+  theme(plot.title=element_text(hjust=0.50))
+
+```
+
+
+```{r Outcome}
+## Bar Plot for Outcome ##
+ggplot(d1,aes(x=Outcome)) +
+  geom_bar(fill = c("darkseagreen2", "darkseagreen")) +
+  labs(x= "Outcome",
+       y= "Count",
+       title = "Bar Plot for Having Diabetes or Not") + 
+  theme_light() +
+  theme(plot.title=element_text(hjust=0.50))
+```
+
+
+```{r correlations}
+## Checking correlations between independent variables ##
+library(GGally)
+d1_sub <- d1 %>%
+  dplyr::select(Pregnancies,Glucose, BloodPressure, 
+                SkinThickness, Insulin, BMI, Age)
+
+GGally::ggcorr(d1_sub, label = T) +
+  ggtitle("Visualizing Correlation Matrix as a Heatmap") +
+  theme(plot.title=element_text(hjust=0.5))
+```
+
+
+```{r Scatterplot, Figure 2}
+## Changing the outcome variable for nice graphic legend ##
+do <- d1 %>% 
+  dplyr::mutate(Outcome = case_when(Outcome == 0 ~ 'No Diabetes',
+                                    Outcome == 1 ~ 'Diabetes'))
+
+## Scatter plot for Glucose and BMI colored by Outcome ##
+ggplot(do) +
+  geom_point(mapping = aes(x = Glucose, y = BMI, color= Outcome)) +
+  theme_linedraw() +
+  labs(x="Glucose (mg/dL)",
+       y = "BMI (kg/m^2)",
+       title = "Figure 2: Scatterplot for Glucose and BMI by Diabetes Outcome") +
+  theme(legend.text = element_text(size=10,face="bold")) +
+  theme(plot.title=element_text(hjust=0.5)) +
+  scale_color_manual(values=c("lightskyblue2","darkblue")) 
+
+```
+
+```{r Logistic Regression}
+d1$Outcome <- as.numeric(d1$Outcome)
+
+## Logistic Regression model ##
+lmodel <- glm(Outcome ~ SkinThickness + Pregnancies + Glucose + BMI + Age + BloodPressure, data = d1, family = "binomial")
+summary(lmodel)
+
+## Pseduo r^2 ##
+DescTools::PseudoR2(lmodel,which="McKelveyZavoina")
+
+## Exponentiating coefficients ##
+lmodel %>% 
+  broom::tidy(conf.int=T,exponentiate=T)
+    ##interpreting Pregnancies: As Pregnancies increases by 1 point, the odds of having
+    #diabetes increases by ((1.118-1)*100 = 11.8% ) 11.8%
+
+## VIF ##
+car::vif(lmodel)
+
+## Confidence Interval Plot ##
+plot <- lmodel %>%
+  broom::tidy(conf.int=T,exponentiate=T) %>%
+  dplyr::mutate(Sig = if_else(p.value < 0.05,"Significant",
+                              "Non-Significant")) %>%
+  ggplot(aes(x=term,y=estimate)) +
+  geom_errorbar(aes(ymin=conf.low,ymax=conf.high,color=factor(Sig)),width=0.1) +
+  geom_point(aes(color=factor(Sig))) +
+  geom_hline(aes(yintercept = 1),color="black",linetype="dashed") +
+  labs(x = "Variable",
+       y = "Estimated Exponentiated Coefficient",
+       color = "Statistical \n Significance") +
+  theme_classic() + coord_flip() +
+  ggtitle("Confidence Intervals for Logistic Regression Analysis") +
+  theme(plot.title = element_text(hjust=0.5))
+
+plot
+library(plotly)
+plotly::ggplotly(plot)
+
+
+```
+
+
+```{r Sensitivity/Specificity/ROC}
+
+set.seed(12345)
+
+## Creating testing and training datasets ##
+d1$Outcome <- as.numeric(d1$Outcome)
+samp <- sample(c("train","test"), nrow(d1), replace = T, prob = c(.7, .3))
+d_train <- d1[samp == "train",] #only keep rows where samp = train
+d_test <- d1[samp == "test",] 
+
+## Logistic regression with training dataset ##
+testmodel <- glm(Outcome ~ SkinThickness + Pregnancies + Glucose + BMI + Age + BloodPressure, data = d_train, family = "binomial")
+
+## ROC curve with training dataset ##
+ROSE::roc.curve(testmodel$y,fitted(testmodel),plotit = T) 
+
+## Calculating sensitivity and specificity table at probability > 50% ##
+## Creating Confusion Matrix ##
+d_test$pred_probs <- predict.glm(testmodel,newdata=d_test,type="response")
+pt <- table(d_test$Outcome,d_test$pred_probs > 0.50)
+pt1 <- addmargins(pt)
+
+write.csv(pt1, "sstable.csv",row.names = F)
+
+## Sensitivity ##
+pt[1,1]/sum(pt[1,])
+
+## Specificity ##
+pt[2,2]/sum(pt[2,])
+
+## Using different cutoff points for sensitivity and specificity ##
+cp <- seq(0.20,0.95,by=0.01) 
+sn <- vector("double",length(cp)) 
+sp <- vector("double",length(cp)) 
+
+for(i in 1:length(cp)){
+  
+  tab <- table(d_test$Outcome,d_test$pred_probs > cp[i]) 
+  
+  sp[i] <- ifelse(dim(tab)[2] == 1,0,tab[1,1]/sum(tab[1,]))
+  
+  sn[i] <- ifelse(dim(tab)[2] == 1,0,tab[2,2]/sum(tab[2,]))
+  
+}
+
+## Creating plot ##
+ssplot <- ggplot() + 
+  geom_line(aes(x = cp, y = sn),color='blue') + #sensitivity in blue
+  geom_line(aes(x = cp, y = sp),color='red') + #specificity in red
+  theme_classic() + labs(x = "Cut Points",
+                         y = "Probabilities") +
+  scale_x_continuous(breaks = seq(0.20,0.90,by=0.05))
+
+ssplot
+
+```
+
+
+```{r Predicted Probabilities}
+## Predicted probability graph ##
+
+d2 <- d1 %>% 
+  dplyr::mutate(BMIlevel = case_when(BMI <= 18.5 ~ '1',
+                                    BMI <= 24.9 ~ '2',
+                                    BMI <= 29.9 ~ '3',
+                                    BMI >= 30 ~ '4'))
+d3 <- d2 %>% 
+  select("BMIlevel","Pregnancies","Glucose","Outcome")
+
+
+d3$BMIlevel <- factor(d3$BMIlevel)
+
+d3$BMIlevel1 <- relevel(d3$BMIlevel,ref="4")
+
+d3$BMIlevel1
+
+summary(d3)
+
+lmodel <- glm(Outcome ~  Pregnancies + Glucose + BMIlevel1 , data = d3, family = "binomial")
+
+new_d3 <- tibble(Pregnancies = rep(3,100), #repeats 3.5 100 times
+                  BMIlevel1 = rep(1,100), #repeats 1 100 times
+                   Glucose= seq(200,800,length.out = 100))
+new_d32 <- tibble(Pregnancies = rep(3,100),
+                  BMIlevel1 = rep(2,100), #rank is at rank 2
+                  Glucose = seq(200,800,length.out = 100))
+
+new_d33 <- tibble(Pregnancies = rep(3,100),
+                  BMIlevel1 = rep(3,100),
+                  Glucose = seq(200,800,length.out = 100))
+
+new_d34 <- tibble(Pregnancies = rep(3,100),
+                  BMIlevel1 = rep(4,100),
+                  Glucose = seq(200,800,length.out = 100))
+
+new_d <- dplyr::bind_rows(new_d3,new_d32,new_d33,new_d34)
+new_d$BMIlevel1 <- factor(new_d$BMIlevel1) 
+new_d$probs <- predict.glm(lmodel,newdata=new_d,type="response")
+
+new_d %>%
+  ggplot(aes(x=Glucose,y=probs)) + #specify x and y axes
+  geom_line(aes(color=BMIlevel1)) + labs(x = "Glucose",
+                                     y = "Predicted Probability of Diabetes",
+                                     color = "BMI Level") +
+  theme_classic() + ggtitle("Predicted Probability of Diabetes",
+                            subtitle = "for fixed Pregancies of 3") +
+  theme(plot.title=element_text(hjust=0.50),
+        plot.subtitle=element_text(hjust=0.50))
+
+```
+
