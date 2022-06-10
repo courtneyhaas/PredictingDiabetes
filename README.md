@@ -4,7 +4,7 @@
   
   I used the Pima Indians dataset that was found on Kaggle from the National Institute of Diabetes and Digestive and Kidney Diseases. This dataset consists of 768 female patients who are at least 21 years old. It includes an “Outcome” variable, whether the patient had diabetes or did not have diabetes.
   
-  ## This project was done in R for Fall Analytics Day 2021 at Kennesaw State University.
+  #### This project was done in R for Fall Analytics Day 2021 at Kennesaw State University.
 
 
 ![Haas - AnalyticsDay-1](https://user-images.githubusercontent.com/95246631/173091849-594b9a97-e441-4910-a8e2-c0a93fce958e.png)
